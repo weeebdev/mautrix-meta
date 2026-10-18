@@ -193,12 +193,20 @@ type DeltaWrapper struct {
 
 // ParseDeltaWrappers parses the delta payload of a sync operation. Instagram puts the deltas under
 // data.slide_delta_processor; threads.com uses its own delta query, so any other array under data
-// is accepted too.
+// is accepted too, as is a single wrapper object instead of an array.
 func ParseDeltaWrappers(raw []byte) ([]*DeltaWrapper, error) {
-	var generic []struct {
+	type genericWrapper struct {
 		Data map[string]json.RawMessage `json:"data"`
 	}
-	if err := json.Unmarshal(raw, &generic); err != nil {
+	var generic []genericWrapper
+	if trimmed := bytes.TrimSpace(raw); len(trimmed) > 0 && trimmed[0] == '{' {
+		// threads.com sends a single wrapper object instead of an array
+		var single genericWrapper
+		if err := json.Unmarshal(trimmed, &single); err != nil {
+			return nil, err
+		}
+		generic = []genericWrapper{single}
+	} else if err := json.Unmarshal(raw, &generic); err != nil {
 		return nil, err
 	}
 	out := make([]*DeltaWrapper, 0, len(generic))

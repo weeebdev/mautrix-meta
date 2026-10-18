@@ -186,7 +186,8 @@ func TestThreadsFolderMapping(t *testing.T) {
 func TestParseDeltaWrappers(t *testing.T) {
 	instagram := `[{"data":{"slide_delta_processor":[{"__typename":"SlideUQPPMarkRead","uq_seq_id":"5","thread_fbid":"1"}]}}]`
 	threads := `[{"data":{"slide_uqpp_deltas":[{"__typename":"SlideUQPPMarkRead","uq_seq_id":"6","thread_fbid":"2"}],"other":{"x":1}}}]`
-	for name, raw := range map[string]string{"instagram": instagram, "threads": threads} {
+	threadsObject := `{"data":{"slide_delta_processor":[{"__typename":"SlideUQPPMarkRead","uq_seq_id":"7","thread_fbid":"3"}]}}`
+	for name, raw := range map[string]string{"instagram": instagram, "threads": threads, "threads object": threadsObject} {
 		wrappers, err := ParseDeltaWrappers([]byte(raw))
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
