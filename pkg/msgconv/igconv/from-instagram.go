@@ -166,7 +166,7 @@ func (mc *MessageConverter) ToMatrix(
 	case *slidetypes.MessageContentAISearchResponse:
 		cm.Parts = append(cm.Parts, mc.wrapText(ctx, content.MessageTextBody, nil))
 	case *slidetypes.MessageContentThreadsPostShare:
-		cm.Parts = append(cm.Parts, mc.wrapThreadsPostShare(content))
+		cm.Parts = append(cm.Parts, mc.wrapThreadsPostShare(ctx, content)...)
 	case slidetypes.MessageContentUnknown:
 		cm.Parts = append(cm.Parts, mc.wrapUnsupportedContent(content))
 	default:
@@ -443,26 +443,83 @@ func (mc *MessageConverter) wrapUnsupportedContent(content any) *bridgev2.Conver
 	}
 }
 
-// wrapThreadsPostShare renders a shared Threads post as text: the sender's comment, the post text
-// as a quote, and a link to the post.
-func (mc *MessageConverter) wrapThreadsPostShare(content *slidetypes.MessageContentThreadsPostShare) *bridgev2.ConvertedMessagePart {
+// threadsPostMaxMedia caps how many images/videos of a shared post are bridged.
+const threadsPostMaxMedia = 10
+
+// wrapThreadsPostShare renders a shared Threads post: the sender's comment, the post (author and
+// text) as a quote with its stats and link, then the post's images and videos as attachments.
+func (mc *MessageConverter) wrapThreadsPostShare(ctx context.Context, content *slidetypes.MessageContentThreadsPostShare) []*bridgev2.ConvertedMessagePart {
+	post := content.Post()
+	postText := content.PostTextBody
+	if postText == "" && post != nil {
+		postText = post.CaptionText()
+	}
 	var plain, html strings.Builder
 	if content.ShareTextBody != "" {
 		plain.WriteString(content.ShareTextBody + "\n\n")
 		html.WriteString("<p>" + htmlEscapeLines(content.ShareTextBody) + "</p>")
 	}
-	if content.PostTextBody != "" {
-		plain.WriteString("> " + strings.ReplaceAll(content.PostTextBody, "\n", "\n> ") + "\n")
-		html.WriteString("<blockquote>" + htmlEscapeLines(content.PostTextBody) + "</blockquote>")
+	if post != nil && post.User.Username != "" {
+		author := "@" + post.User.Username
+		authorHTML := "<strong>" + gohtml.EscapeString(cmp.Or(post.User.FullName, author)) + "</strong>"
+		if post.User.FullName != "" {
+			authorHTML += " " + gohtml.EscapeString(author)
+		}
+		if post.User.IsVerified {
+			author += " ✓"
+			authorHTML += " ✓"
+		}
+		if post.User.FullName != "" {
+			author = post.User.FullName + " (" + author + ")"
+		}
+		plain.WriteString("> " + author + "\n")
+		html.WriteString("<blockquote>" + authorHTML)
+		if postText != "" {
+			plain.WriteString("> " + strings.ReplaceAll(postText, "\n", "\n> ") + "\n")
+			html.WriteString("<br/>" + htmlEscapeLines(postText))
+		}
+		html.WriteString("</blockquote>")
+	} else if postText != "" {
+		plain.WriteString("> " + strings.ReplaceAll(postText, "\n", "\n> ") + "\n")
+		html.WriteString("<blockquote>" + htmlEscapeLines(postText) + "</blockquote>")
 	}
-	if postURL := content.PostURL(); postURL != "" {
-		plain.WriteString(postURL)
-		html.WriteString(`<p><a href="` + gohtml.EscapeString(postURL) + `">` + gohtml.EscapeString(postURL) + "</a></p>")
-	} else if plain.Len() == 0 {
+	var footer []string
+	if post != nil {
+		if post.TextPostAppInfo.IsPostUnavailable {
+			footer = append(footer, "post unavailable")
+		}
+		if post.LikeCount > 0 {
+			footer = append(footer, fmt.Sprintf("❤️ %d", post.LikeCount))
+		}
+		if n := post.TextPostAppInfo.DirectReplyCount; n > 0 {
+			footer = append(footer, fmt.Sprintf("💬 %d", n))
+		}
+		if n := post.TextPostAppInfo.RepostCount + post.TextPostAppInfo.QuoteCount; n > 0 {
+			footer = append(footer, fmt.Sprintf("🔁 %d", n))
+		}
+	}
+	postURL := content.PostURL()
+	if len(footer) > 0 || postURL != "" {
+		plain.WriteString("\n")
+		html.WriteString("<p>")
+		if len(footer) > 0 {
+			plain.WriteString(strings.Join(footer, " · ") + "\n")
+			html.WriteString(gohtml.EscapeString(strings.Join(footer, " · ")))
+			if postURL != "" {
+				html.WriteString("<br/>")
+			}
+		}
+		if postURL != "" {
+			plain.WriteString(postURL)
+			html.WriteString(`<a href="` + gohtml.EscapeString(postURL) + `">` + gohtml.EscapeString(postURL) + "</a>")
+		}
+		html.WriteString("</p>")
+	}
+	if plain.Len() == 0 {
 		plain.WriteString("Shared a Threads post")
 		html.WriteString("<p><em>Shared a Threads post</em></p>")
 	}
-	return &bridgev2.ConvertedMessagePart{
+	parts := []*bridgev2.ConvertedMessagePart{{
 		Type: event.EventMessage,
 		Content: &event.MessageEventContent{
 			MsgType:       event.MsgText,
@@ -470,7 +527,27 @@ func (mc *MessageConverter) wrapThreadsPostShare(content *slidetypes.MessageCont
 			Format:        event.FormatHTML,
 			FormattedBody: html.String(),
 		},
+	}}
+	if post == nil {
+		return parts
 	}
+	for i, media := range post.Media() {
+		if i >= threadsPostMaxMedia {
+			break
+		}
+		params := mediadl.ReuploadParams{AttachmentType: table.AttachmentTypeImage}
+		if video := media.Video(); video != nil {
+			params.AttachmentType = table.AttachmentTypeVideo
+			params.URL, params.PreviewWidth, params.PreviewHeight = video.URL, video.Width, video.Height
+		} else if image := media.Image(); image != nil {
+			params.URL, params.PreviewWidth, params.PreviewHeight = image.URL, image.Width, image.Height
+		} else {
+			continue
+		}
+		// Index 0 is the text part, so media parts start at 1.
+		parts = append(parts, mc.wrapMedia(ctx, "threads post media", i+1, params))
+	}
+	return parts
 }
 
 func htmlEscapeLines(text string) string {

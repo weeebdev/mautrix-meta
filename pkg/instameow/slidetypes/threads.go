@@ -327,35 +327,114 @@ type MessageContentThreadsPostShare struct {
 
 func (*MessageContentThreadsPostShare) isMessageContent() {}
 
-// PostURL returns the threads.com URL of the shared post, if the embedded post JSON has the code.
-func (c *MessageContentThreadsPostShare) PostURL() string {
+// ThreadsPost is the shared post embedded in threads_post_json (an Instagram media dict).
+type ThreadsPost struct {
+	Code      string `json:"code"`
+	TakenAt   int64  `json:"taken_at"`
+	MediaType int    `json:"media_type"`
+	LikeCount int    `json:"like_count"`
+	Caption   *struct {
+		Text string `json:"text"`
+	} `json:"caption"`
+	User struct {
+		Username   string `json:"username"`
+		FullName   string `json:"full_name"`
+		IsVerified bool   `json:"is_verified"`
+	} `json:"user"`
+	ThreadsPostMedia
+	CarouselMedia   []ThreadsPostMedia `json:"carousel_media"`
+	TextPostAppInfo struct {
+		DirectReplyCount  int  `json:"direct_reply_count"`
+		RepostCount       int  `json:"repost_count"`
+		QuoteCount        int  `json:"quote_count"`
+		IsPostUnavailable bool `json:"is_post_unavailable"`
+	} `json:"text_post_app_info"`
+}
+
+// ThreadsPostMedia is an image or video of a shared post (or of one carousel item).
+type ThreadsPostMedia struct {
+	MediaType      int `json:"media_type"`
+	ImageVersions2 *struct {
+		Candidates []ThreadsPostMediaVersion `json:"candidates"`
+	} `json:"image_versions2"`
+	VideoVersions  []ThreadsPostMediaVersion `json:"video_versions"`
+	OriginalWidth  int                       `json:"original_width"`
+	OriginalHeight int                       `json:"original_height"`
+}
+
+type ThreadsPostMediaVersion struct {
+	URL    string `json:"url"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+}
+
+// Best returns the largest version, or nil if there are none.
+func bestVersion(versions []ThreadsPostMediaVersion) *ThreadsPostMediaVersion {
+	var best *ThreadsPostMediaVersion
+	for i := range versions {
+		if versions[i].URL != "" && (best == nil || versions[i].Width*versions[i].Height > best.Width*best.Height) {
+			best = &versions[i]
+		}
+	}
+	return best
+}
+
+// Image returns the largest image version of the media, or nil.
+func (m *ThreadsPostMedia) Image() *ThreadsPostMediaVersion {
+	if m.ImageVersions2 == nil {
+		return nil
+	}
+	return bestVersion(m.ImageVersions2.Candidates)
+}
+
+// Video returns the largest video version of the media, or nil for images.
+func (m *ThreadsPostMedia) Video() *ThreadsPostMediaVersion {
+	return bestVersion(m.VideoVersions)
+}
+
+// Media returns the images and videos of the post: the carousel items, or the post's own media.
+func (p *ThreadsPost) Media() []*ThreadsPostMedia {
+	if len(p.CarouselMedia) > 0 {
+		out := make([]*ThreadsPostMedia, 0, len(p.CarouselMedia))
+		for i := range p.CarouselMedia {
+			out = append(out, &p.CarouselMedia[i])
+		}
+		return out
+	}
+	if p.Image() != nil || p.Video() != nil {
+		return []*ThreadsPostMedia{&p.ThreadsPostMedia}
+	}
+	return nil
+}
+
+// CaptionText returns the post text.
+func (p *ThreadsPost) CaptionText() string {
+	if p.Caption == nil {
+		return ""
+	}
+	return p.Caption.Text
+}
+
+// Post parses the embedded post, or returns nil if it's missing or invalid.
+func (c *MessageContentThreadsPostShare) Post() *ThreadsPost {
 	if c.PostJSON == "" {
-		return ""
+		return nil
 	}
-	var post struct {
-		Code string `json:"code"`
-		User struct {
-			Username string `json:"username"`
-		} `json:"user"`
-		Post *struct {
-			Code string `json:"code"`
-			User struct {
-				Username string `json:"username"`
-			} `json:"user"`
-		} `json:"post"`
-	}
+	var post ThreadsPost
 	if json.Unmarshal([]byte(c.PostJSON), &post) != nil {
+		return nil
+	}
+	return &post
+}
+
+// PostURL returns the threads.com URL of the shared post, if the embedded post has its code.
+func (c *MessageContentThreadsPostShare) PostURL() string {
+	post := c.Post()
+	if post == nil || post.Code == "" {
 		return ""
 	}
-	code, username := post.Code, post.User.Username
-	if code == "" && post.Post != nil {
-		code, username = post.Post.Code, post.Post.User.Username
+	if post.User.Username == "" {
+		return "https://www.threads.com/t/" + post.Code
 	}
-	if code == "" {
-		return ""
-	}
-	if username == "" {
-		return "https://www.threads.com/t/" + code
-	}
-	return "https://www.threads.com/@" + username + "/post/" + code
+	return "https://www.threads.com/@" + post.User.Username + "/post/" + post.Code
 }

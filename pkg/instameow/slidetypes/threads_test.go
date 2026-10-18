@@ -63,7 +63,7 @@ const testMessagesJSON = `{
 				{"node": {
 					"message_id": "mid.$placeholder3", "sender_fbid": "90000000000000002", "timestamp_ms": "1760800003000",
 					"reactions": [], "id": "mid.$placeholder3", "__typename": "SlideMessage", "thread_fbid": "1000000000000001",
-					"content": {"__typename": "SlideMessageThreadsPostShare", "text_post_app_share_context": "x", "threads_post_share_text_body": "look", "threads_post_text_body": "post text", "threads_post_json": "{\"code\":\"ABC123\",\"user\":{\"username\":\"author\"}}", "content_ref": {"media_igid": "1", "owner_igid": "2", "compound_media_id": "1_2"}}
+					"content": {"__typename": "SlideMessageThreadsPostShare", "text_post_app_share_context": "x", "threads_post_share_text_body": "look", "threads_post_text_body": "", "threads_post_json": "{\"code\":\"ABC123\",\"like_count\":5,\"caption\":{\"text\":\"caption text\"},\"user\":{\"username\":\"author\",\"full_name\":\"Author\",\"is_verified\":true},\"image_versions2\":{\"candidates\":[{\"url\":\"https://example.invalid/s.jpg\",\"width\":320,\"height\":320},{\"url\":\"https://example.invalid/l.jpg\",\"width\":1080,\"height\":1080}]},\"text_post_app_info\":{\"direct_reply_count\":2}}", "content_ref": {"media_igid": "1", "owner_igid": "2", "compound_media_id": "1_2"}}
 				}, "cursor": "c3"}
 			],
 			"page_info": {"end_cursor": "c3", "has_next_page": true, "has_previous_page": false, "start_cursor": "c1"}
@@ -110,8 +110,15 @@ func TestThreadsDMToThreadInfo(t *testing.T) {
 		t.Errorf("image content not decoded: %#v", msgs.Edges[1].Node.Content.Content)
 	}
 	share, ok := msgs.Edges[2].Node.Content.Content.(*MessageContentThreadsPostShare)
-	if !ok || share.PostTextBody != "post text" || share.ShareTextBody != "look" {
+	if !ok || share.ShareTextBody != "look" {
 		t.Fatalf("post share not decoded: %#v", msgs.Edges[2].Node.Content.Content)
+	}
+	post := share.Post()
+	if post == nil || post.CaptionText() != "caption text" || post.User.FullName != "Author" || !post.User.IsVerified || post.LikeCount != 5 || post.TextPostAppInfo.DirectReplyCount != 2 {
+		t.Fatalf("embedded post not decoded: %+v", post)
+	}
+	if media := post.Media(); len(media) != 1 || media[0].Image() == nil || media[0].Image().URL != "https://example.invalid/l.jpg" || media[0].Video() != nil {
+		t.Errorf("post media should be the largest image: %+v", media)
 	}
 	if got := share.PostURL(); got != "https://www.threads.com/@author/post/ABC123" {
 		t.Errorf("unexpected post URL %q", got)
