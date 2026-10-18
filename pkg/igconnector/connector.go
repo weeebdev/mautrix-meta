@@ -41,6 +41,10 @@ type IGConnector struct {
 	// PrivacyFeatures enables the invisible, pause, keep-deleted and show-edits features and their
 	// bot commands (see privacy.go).
 	PrivacyFeatures bool
+	// LogBridgeStates logs every bridge state change at INFO as "Bridge state changed" with only
+	// bridge_state and error_code, for monitoring that reads the logs (states only go to Beeper in
+	// websocket mode).
+	LogBridgeStates bool
 
 	sealer *contentSealer
 }

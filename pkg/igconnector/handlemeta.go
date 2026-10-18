@@ -94,7 +94,7 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 	switch evt := rawEvt.(type) {
 	case *slidetypes.Connected:
 		ic.permanentErrored.Store(false)
-		ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
+		ic.sendBridgeState(status.BridgeState{StateEvent: status.StateConnected})
 		if evt.SubscribedSeqID >= evt.LatestSeqID {
 			ic.catchingUpTo = 0
 			go func() {
@@ -130,7 +130,7 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 			ic.permanentErrored.Store(true)
 			ic.cancelPeriodicReconnect()
 		}
-		ic.UserLogin.BridgeState.Send(status.BridgeState{
+		ic.sendBridgeState(status.BridgeState{
 			StateEvent: stateEvt,
 			Error:      errCode,
 			Info: map[string]any{
@@ -141,7 +141,7 @@ func (ic *IGClient) handleIGEvent(ctx context.Context, rawEvt slidetypes.ClientE
 	case *slidetypes.AuthError:
 		if state := ic.errorToBridgeState(ctx, evt.Error); state != nil {
 			ic.UserLogin.Log.Warn().Err(evt.Error).Msg("Got auth error event from request failing")
-			ic.UserLogin.BridgeState.Send(*state)
+			ic.sendBridgeState(*state)
 		} else {
 			ic.UserLogin.Log.Warn().Err(evt.Error).Msg("Got unrecognized auth error event")
 		}

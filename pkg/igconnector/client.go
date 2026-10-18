@@ -158,10 +158,10 @@ func (ic *IGClient) Connect(ctx context.Context) {
 		return
 	}
 	if ic.LoginMeta.Platform != ic.Main.GetPlatform() {
-		ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateBadCredentials, Error: MetaNotInstagram})
+		ic.sendBridgeState(status.BridgeState{StateEvent: status.StateBadCredentials, Error: MetaNotInstagram})
 		return
 	}
-	ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting})
+	ic.sendBridgeState(status.BridgeState{StateEvent: status.StateConnecting})
 	mailboxCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	ic.stopConnectAttempt.Store(&cancel)
@@ -243,7 +243,7 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 	ic.ensureIGClient()
 	cli := ic.Client
 	if cli == nil {
-		ic.UserLogin.BridgeState.Send(status.BridgeState{
+		ic.sendBridgeState(status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      MetaNotLoggedIn,
 		})
@@ -252,7 +252,7 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 	if ic.Main.Config.ProxyOther && (ic.Main.Config.GetProxyFrom != "" || ic.Main.Config.Proxy != "") {
 		cli.GetHTTP().GetNewProxy = ic.Main.getProxy
 		if !cli.GetHTTP().UpdateProxy("connect") {
-			ic.UserLogin.BridgeState.Send(status.BridgeState{
+			ic.sendBridgeState(status.BridgeState{
 				StateEvent: status.StateUnknownError,
 				Error:      MetaProxyUpdateFail,
 			})
@@ -299,7 +299,7 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to load index")
 		if state := ic.errorToBridgeState(ctx, err); state != nil {
-			ic.UserLogin.BridgeState.Send(*state)
+			ic.sendBridgeState(*state)
 		} else if lsErr := (&types.ErrorResponse{}); errors.As(err, &lsErr) {
 			if errors.Is(err, types.ErrPleaseReloadPage) {
 				err = ic.Main.DB.DeleteReconnectionState(ctx, ic.UserLogin.ID)
@@ -315,7 +315,7 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 			} else if attempts < MaxConnectRetries {
 				stateEvt = status.StateTransientDisconnect
 			}
-			ic.UserLogin.BridgeState.Send(status.BridgeState{
+			ic.sendBridgeState(status.BridgeState{
 				StateEvent: stateEvt,
 				Error:      status.BridgeStateErrorCode(fmt.Sprintf("meta-lserror-%d", lsErr.ErrorCode)),
 				Message:    lsErr.Error(),
@@ -325,13 +325,13 @@ func (ic *IGClient) connectWithRetry(retryCtx, ctx context.Context, attempts int
 			}
 		} else if gqlErr := (&types.GraphQLError{}); errors.As(err, &gqlErr) {
 			// TODO determine if this should retry
-			ic.UserLogin.BridgeState.Send(status.BridgeState{
+			ic.sendBridgeState(status.BridgeState{
 				StateEvent: status.StateUnknownError,
 				Error:      MetaGraphQLError,
 				Message:    gqlErr.Message,
 			})
 		} else {
-			ic.UserLogin.BridgeState.Send(status.BridgeState{
+			ic.sendBridgeState(status.BridgeState{
 				StateEvent: status.StateUnknownError,
 				Error:      MetaConnectError,
 				Info: map[string]any{
@@ -363,7 +363,7 @@ func (ic *IGClient) connectWithMailbox(ctx, retryCtx context.Context, currentUse
 	ic.Ghost, err = ic.Main.Bridge.GetGhostByID(ctx, networkid.UserID(ic.UserLogin.ID))
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("Failed to get own ghost")
-		ic.UserLogin.BridgeState.Send(status.BridgeState{
+		ic.sendBridgeState(status.BridgeState{
 			StateEvent: status.StateUnknownError,
 			Error:      MetaConnectError,
 		})

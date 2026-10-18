@@ -251,7 +251,7 @@ func loginWithCookies(
 	}
 
 	backgroundCtx := ul.Log.WithContext(conn.Bridge.BackgroundCtx)
-	ul.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting})
+	igClient.sendBridgeState(status.BridgeState{StateEvent: status.StateConnecting})
 	go func() {
 		igClient.connectWithMailbox(backgroundCtx, backgroundCtx, user, mailbox)
 		igClient.schedulePeriodicReconnect(backgroundCtx)

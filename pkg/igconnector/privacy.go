@@ -388,7 +388,7 @@ func (ic *IGClient) isPaused() bool {
 }
 
 func (ic *IGClient) sendPausedState() {
-	ic.UserLogin.BridgeState.Send(status.BridgeState{
+	ic.sendBridgeState(status.BridgeState{
 		StateEvent: status.StateTransientDisconnect,
 		Error:      "meta-paused",
 		Message:    "Bridge is paused. Send `resume` to the bridge bot to reconnect.",
@@ -505,3 +505,15 @@ func pauseCommand(name, description string, pause bool) *commands.FullHandler {
 
 var cmdPause = pauseCommand("pause", "Disconnect and stop bridging until `resume` (survives restarts)", true)
 var cmdResume = pauseCommand("resume", "Reconnect after `pause`", false)
+
+// sendBridgeState sends a bridge state and, with LogBridgeStates, logs it at INFO on the bridge
+// root logger, so the line has no login or user IDs.
+func (ic *IGClient) sendBridgeState(state status.BridgeState) {
+	if ic.Main.LogBridgeStates {
+		ic.Main.Bridge.Log.Info().
+			Str("bridge_state", string(state.StateEvent)).
+			Str("error_code", string(state.Error)).
+			Msg("Bridge state changed")
+	}
+	ic.UserLogin.BridgeState.Send(state)
+}
