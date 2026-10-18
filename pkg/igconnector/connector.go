@@ -38,6 +38,11 @@ type IGConnector struct {
 	Platform types.Platform
 	// Name overrides the bridge name returned by GetName, if set.
 	Name *bridgev2.BridgeName
+	// PrivacyFeatures enables the invisible, pause, keep-deleted and show-edits features and their
+	// bot commands (see privacy.go).
+	PrivacyFeatures bool
+
+	sealer *contentSealer
 }
 
 // GetPlatform returns the platform this connector bridges.
@@ -72,7 +77,7 @@ func (ic *IGConnector) Start(ctx context.Context) error {
 	if err != nil {
 		return bridgev2.DBUpgradeError{Err: err, Section: "meta"}
 	}
-	return nil
+	return ic.startPrivacy(ctx)
 }
 
 func (ic *IGConnector) SetMaxFileSize(maxSize int64) {

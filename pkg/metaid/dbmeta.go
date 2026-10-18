@@ -27,6 +27,11 @@ type MessageMetadata struct {
 	// Metadata for postponed fetching of XMA media.
 	XMAFetchMeta *XMAFetchMeta `json:"xma_fetch_meta,omitempty"`
 	XMAFetched   bool          `json:"xma_fetched,omitempty"`
+
+	// Privacy features (igconnector PrivacyFeatures): the encrypted bridged content and previous
+	// versions of someone else's message, and whether it was deleted remotely and kept.
+	Sealed  string `json:"sealed,omitempty"`
+	Deleted bool   `json:"deleted,omitempty"`
 }
 
 type XMAFetchMeta struct {
@@ -54,12 +59,36 @@ type UserLoginMetadata struct {
 
 	// Thread backfill state
 	BackfillCompleted bool `json:"backfill_completed,omitempty"`
+
+	// Privacy settings (igconnector PrivacyFeatures), toggled with bot commands
+	Invisible   bool  `json:"invisible,omitempty"`
+	Paused      bool  `json:"paused,omitempty"`
+	KeepDeleted *bool `json:"keep_deleted,omitempty"`
+	ShowEdits   *bool `json:"show_edits,omitempty"`
+}
+
+// KeepDeletedEnabled returns the keep-deleted setting, which defaults to on.
+func (m *UserLoginMetadata) KeepDeletedEnabled() bool {
+	return m.KeepDeleted == nil || *m.KeepDeleted
+}
+
+// ShowEditsEnabled returns the show-edits setting, which defaults to on.
+func (m *UserLoginMetadata) ShowEditsEnabled() bool {
+	return m.ShowEdits == nil || *m.ShowEdits
 }
 
 func (m *UserLoginMetadata) CopyFrom(other any) {
 	updated := *other.(*UserLoginMetadata)
 	if m.Platform.IsMessenger() && updated.Platform.IsMessenger() && m.HistoryDevice != nil {
 		updated.HistoryDevice = m.HistoryDevice
+	}
+	// Privacy settings survive a re-login (except pause: logging in again resumes).
+	updated.Invisible = m.Invisible
+	if updated.KeepDeleted == nil {
+		updated.KeepDeleted = m.KeepDeleted
+	}
+	if updated.ShowEdits == nil {
+		updated.ShowEdits = m.ShowEdits
 	}
 	*m = updated
 }

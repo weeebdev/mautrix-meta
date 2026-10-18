@@ -303,6 +303,8 @@ func (ic *IGClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2
 func (ic *IGClient) HandleMatrixReadReceipt(ctx context.Context, receipt *bridgev2.MatrixReadReceipt) error {
 	if ic.LoginMeta.Cookies == nil {
 		return bridgev2.ErrNotLoggedIn
+	} else if ic.isInvisible() {
+		return nil
 	}
 	meta, err := ic.ensureIGID(ctx, receipt.Portal)
 	if err != nil {
@@ -487,6 +489,9 @@ func (ic *IGClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.Ma
 }
 
 func (ic *IGClient) HandleMatrixTyping(ctx context.Context, msg *bridgev2.MatrixTyping) error {
+	if ic.isInvisible() {
+		return nil
+	}
 	meta, err := ic.ensureIGID(ctx, msg.Portal)
 	if err != nil {
 		return err

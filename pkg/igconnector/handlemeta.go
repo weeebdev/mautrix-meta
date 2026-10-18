@@ -321,7 +321,7 @@ func (ic *IGClient) handleDelta(ctx context.Context, d *slidetypes.Delta) (retEr
 	case *slidetypes.DeleteReactionEvent:
 		res = ic.handleReactionDelete(ctx, portalKey, evt)
 	case *slidetypes.DeleteMessageEvent:
-		res = ic.handleMessageDelete(portalKey, evt.MessageID)
+		res = ic.handleMessageDelete(ctx, portalKey, evt.MessageID)
 	case *slidetypes.DeleteThreadEvent:
 		res = ic.handleThreadDelete(portalKey)
 	case *slidetypes.PinThreadEvent:
@@ -393,7 +393,9 @@ func (ic *IGClient) handleMessage(portalKey networkid.PortalKey, msg *slidetypes
 		Data: msg,
 		ID:   msgID,
 		ConvertMessageFunc: func(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, data *slidetypes.Message) (*bridgev2.ConvertedMessage, error) {
-			return ic.Main.MsgConv.ToMatrix(ctx, portal, ic.Client, ic.UserLogin, intent, msgID, data, ic.Main.Config.DisableXMAAlways), ctx.Err()
+			cm := ic.Main.MsgConv.ToMatrix(ctx, portal, ic.Client, ic.UserLogin, intent, msgID, data, ic.Main.Config.DisableXMAAlways)
+			ic.sealConverted(msgID, data.SenderFBID, cm)
+			return cm, ctx.Err()
 		},
 	})
 }
@@ -440,11 +442,14 @@ func (ic *IGClient) handleEdit(portalKey networkid.PortalKey, evt *slidetypes.Ed
 					Int("existing_count", len(existing)).
 					Msg("Multiple existing messages found for edit event, using the first one")
 			}
+			if meta, ok := existing[0].Metadata.(*metaid.MessageMetadata); ok && meta.Deleted {
+				return nil, fmt.Errorf("%w: message was deleted", bridgev2.ErrIgnoringRemoteEvent)
+			}
 			return &bridgev2.ConvertedEdit{
 				ModifiedParts: []*bridgev2.ConvertedEditPart{{
 					Part:    existing[0],
 					Type:    event.EventMessage,
-					Content: ic.Main.MsgConv.MetaToMatrixText(ctx, newText, nil),
+					Content: ic.applyEditHistory(existing[0], ic.Main.MsgConv.MetaToMatrixText(ctx, newText, nil)),
 				}},
 			}, nil
 		},
@@ -496,7 +501,10 @@ func (ic *IGClient) handleReactionDelete(ctx context.Context, portalKey networki
 	})
 }
 
-func (ic *IGClient) handleMessageDelete(portalKey networkid.PortalKey, id string) bridgev2.EventHandlingResult {
+func (ic *IGClient) handleMessageDelete(ctx context.Context, portalKey networkid.PortalKey, id string) bridgev2.EventHandlingResult {
+	if res, handled := ic.keepDeleted(ctx, portalKey, metaid.MakeFBMessageID(id)); handled {
+		return res
+	}
 	return ic.UserLogin.QueueRemoteEvent(&simplevent.MessageRemove{
 		EventMeta: simplevent.EventMeta{
 			Type:      bridgev2.RemoteEventMessageRemove,

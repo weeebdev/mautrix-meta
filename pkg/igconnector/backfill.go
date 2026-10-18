@@ -210,6 +210,7 @@ func (ic *IGClient) wrapBackfillMessages(
 			Reactions:   make([]*bridgev2.BackfillReaction, len(msg.Node.Reactions)),
 			//TxnID: msg.Node.OfflineThreadingID,
 		}
+		ic.sealConverted(msgID, msg.Node.SenderFBID, out[i].ConvertedMessage)
 		for j, react := range msg.Node.Reactions {
 			out[i].Reactions[j] = &bridgev2.BackfillReaction{
 				Timestamp: react.ReactionTimestampMS.Time,

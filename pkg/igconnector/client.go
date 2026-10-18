@@ -152,6 +152,11 @@ func (ic *IGClient) ExportCredentials(ctx context.Context) any {
 }
 
 func (ic *IGClient) Connect(ctx context.Context) {
+	if ic.isPaused() {
+		zerolog.Ctx(ctx).Info().Msg("Login is paused, not connecting")
+		ic.sendPausedState()
+		return
+	}
 	if ic.LoginMeta.Platform != ic.Main.GetPlatform() {
 		ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateBadCredentials, Error: MetaNotInstagram})
 		return
