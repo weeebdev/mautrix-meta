@@ -43,6 +43,12 @@ var (
 	threadsPollMessageCount = 20
 	// threadsStreamRetryInterval is the reconnect interval for the realtime stream while polling.
 	threadsStreamRetryInterval = 5 * time.Minute
+	// threadsPollHotWindow is how recently a thread must have been active for its messages to be
+	// rechecked. Edits, reactions and unsends don't change the thread's activity timestamp, so
+	// they're only found by rechecking messages.
+	threadsPollHotWindow = 48 * time.Hour
+	// threadsPollHotPerPoll is how many active threads have their messages rechecked per poll.
+	threadsPollHotPerPoll = 1
 )
 
 type polledMessage struct {
@@ -54,6 +60,7 @@ type polledMessage struct {
 
 type threadsPollState struct {
 	startMS  int64
+	checked  map[string]time.Time
 	activity map[string]int64
 	messages map[string]map[string]polledMessage
 	receipts map[string]map[int64]int64
@@ -136,7 +143,9 @@ func (c *Client) pollThreads(ctx context.Context, state *threadsPollState) error
 		state.activity = make(map[string]int64)
 		state.messages = make(map[string]map[string]polledMessage)
 		state.receipts = make(map[string]map[int64]int64)
+		state.checked = make(map[string]time.Time)
 	}
+	var hot []string
 	for _, edge := range list.Mailbox.ThreadsByFolder.Edges {
 		thread := edge.Node
 		if thread == nil || thread.ID == "" {
@@ -151,6 +160,9 @@ func (c *Client) pollThreads(ctx context.Context, state *threadsPollState) error
 			state.activity[thread.ID] = activity
 			continue
 		} else if known && activity <= prev {
+			if time.Since(time.UnixMilli(activity)) < threadsPollHotWindow {
+				hot = append(hot, thread.ID)
+			}
 			continue
 		}
 		since := prev
@@ -161,6 +173,17 @@ func (c *Client) pollThreads(ctx context.Context, state *threadsPollState) error
 			return err
 		}
 		state.activity[thread.ID] = activity
+		state.checked[thread.ID] = time.Now()
+	}
+	// Recheck the least recently checked active threads for edits, reactions and unsends.
+	slices.SortFunc(hot, func(a, b string) int {
+		return state.checked[a].Compare(state.checked[b])
+	})
+	for _, threadID := range hot[:min(len(hot), threadsPollHotPerPoll)] {
+		if err = c.pollThreadMessages(ctx, state, threadID, state.activity[threadID]); err != nil {
+			return err
+		}
+		state.checked[threadID] = time.Now()
 	}
 	return nil
 }
