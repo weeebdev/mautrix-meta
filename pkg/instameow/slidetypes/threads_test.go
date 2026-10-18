@@ -37,6 +37,8 @@ const testMessagesJSON = `{
 		"is_group": false,
 		"thread_type": "ONE_TO_ONE",
 		"admin_fbids": [],
+		"group_image_emoji": "x",
+		"group_image_gradient": ["FF9AD7FF", "FF6BBBEF"],
 		"members": {"count": 2, "nodes": [
 			{"id": "90000000000000002", "igid": "40000000002", "username": "friend", "name": "Friend", "profile_pic_uri": "https://example.invalid/a.jpg", "is_verified": false, "blocking": false, "following": true, "restricting": false},
 			{"id": "90000000000000001", "igid": "40000000001", "username": "viewer", "name": "Viewer"}

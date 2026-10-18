@@ -43,6 +43,8 @@ type Client struct {
 	platform types.Platform
 	// threadsMailboxID is the threads.com mailbox ID, used for inbox pagination.
 	threadsMailboxID string
+	// threadsPolling is set while the inbox is polled because the realtime stream is down.
+	threadsPolling atomic.Bool
 
 	http    *httpclient.HTTPClient
 	configs *httpclient.Configs

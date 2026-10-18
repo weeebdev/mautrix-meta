@@ -104,7 +104,7 @@ func (c *Client) getStreamControllerSocketOptions() dgw.SocketOptions {
 		Log:            c.log.With().Str("socket", "streamcontroller").Logger(),
 		AppStreamGroup: "group1",
 		AppID:          c.configs.BrowserConfigTable.DGWWebConfig.AppID,
-		UserID:         c.configs.BrowserConfigTable.PolarisViewer.ID,
+		UserID:         c.streamControllerUserID(),
 		DeviceID:       c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID,
 		OnConnect: func(ctx context.Context, fatalError func(error)) error {
 			// Note: the official web app subscribes to multiple streams like presence and other realtime events,
@@ -284,4 +284,13 @@ func (c *Client) handleThreadsTypingData(ctx context.Context, data []byte) error
 		return fmt.Errorf("failed to handle typing notification event: %w", err)
 	}
 	return nil
+}
+
+// streamControllerUserID is the x-dgw-uuid of the streamcontroller socket: the IGID on Instagram,
+// the viewer FBID on threads.com (the same as the main socket).
+func (c *Client) streamControllerUserID() string {
+	if c.IsThreads() {
+		return c.configs.BrowserConfigTable.PolarisViewer.Data.Fbid
+	}
+	return c.configs.BrowserConfigTable.PolarisViewer.ID
 }

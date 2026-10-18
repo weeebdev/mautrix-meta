@@ -85,6 +85,10 @@ func (c *Client) Connect(ctx context.Context) {
 	defer c.socketStopped.Set()
 	c.streamControllerStopped.Clear()
 	go c.connectStreamController(ctx)
+	if c.IsThreads() {
+		c.threadsPolling.Store(false)
+		go c.runThreadsPoller(ctx)
+	}
 	c.socketRetries = 0
 	sequentialFailures := 0
 	ctx = sock.Log.WithContext(ctx)
@@ -105,9 +109,14 @@ func (c *Client) Connect(ctx context.Context) {
 			_ = c.eventHandler(ctx, &slidetypes.ResnapshotRequired{})
 			return
 		}
-		if dispatchErr := c.eventHandler(ctx, &slidetypes.Disconnected{Error: err, FailureCount: sequentialFailures}); dispatchErr != nil {
-			sock.Log.Err(dispatchErr).Msg("Failed to dispatch disconnected event, not reconnecting")
-			return
+		// On threads.com the server closes the stream right away for some accounts. The inbox
+		// poller covers that case, so it isn't reported as a disconnection.
+		threadsStreamClosed := c.IsThreads() && errors.Is(err, ErrMainStreamClosed)
+		if !threadsStreamClosed {
+			if dispatchErr := c.eventHandler(ctx, &slidetypes.Disconnected{Error: err, FailureCount: sequentialFailures}); dispatchErr != nil {
+				sock.Log.Err(dispatchErr).Msg("Failed to dispatch disconnected event, not reconnecting")
+				return
+			}
 		}
 		c.socketRetries++
 		if !wasConnected {
@@ -120,7 +129,7 @@ func (c *Client) Connect(ctx context.Context) {
 			case <-ctx.Done():
 				sock.Log.Debug().Msg("Context canceled, stopping socket reconnect attempts")
 				return
-			case <-time.After(min(time.Duration(1<<sequentialFailures)*time.Second, MaxConnectionRetryInterval)):
+			case <-time.After(c.reconnectDelay(sequentialFailures, threadsStreamClosed)):
 				continue
 			}
 		} else {
@@ -199,6 +208,9 @@ type syncParams struct {
 	SnapshotAtMS             jsontime.UnixMilli `json:"snapshot_at_ms"`
 	SnapshotAppVersion       string             `json:"snapshot_app_version,omitempty"`
 	PrevalidatedGraphQLDocID string             `json:"prevalidated_graphql_doc_id"`
+	// threads.com only
+	IsJSWebClient    bool   `json:"is_js_web_client,omitempty"`
+	GraphQLVariables string `json:"graphql_variables,omitempty"`
 }
 
 type seqIDCursor struct {
@@ -215,8 +227,10 @@ func (c *Client) makeStreamInitPayload(retryCount int) (json.RawMessage, error) 
 	database := int64(223)
 	if c.IsThreads() {
 		// threads.com subscribes to a different iris database with its own delta query
-		params.UserAgent = useragent.UserAgent
+		params.UserAgent = "WMI Web"
+		params.IsJSWebClient = true
 		params.PrevalidatedGraphQLDocID = graphql.ThreadsSlideDeltasQuery
+		params.GraphQLVariables = threadsDeltaVariables
 		database = graphql.ThreadsSyncDatabase
 	}
 	if native {
@@ -364,4 +378,13 @@ func (c *Client) Disconnect() {
 		c.log.Warn().Err(err).Msg("Stream controller socket didn't exit in time")
 	}
 	cancelTimeout()
+}
+
+func (c *Client) reconnectDelay(sequentialFailures int, threadsStreamClosed bool) time.Duration {
+	delay := min(time.Duration(1<<min(sequentialFailures, 16))*time.Second, MaxConnectionRetryInterval)
+	if threadsStreamClosed && sequentialFailures > 3 {
+		// The inbox is polled meanwhile, so retry the stream rarely.
+		delay = threadsStreamRetryInterval
+	}
+	return delay
 }

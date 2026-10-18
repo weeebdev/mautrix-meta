@@ -124,13 +124,17 @@ type ThreadsThread struct {
 		URI string `json:"uri"`
 	} `json:"thread_image"`
 	GroupImageEmoji    string                   `json:"group_image_emoji"`
-	GroupImageGradient string                   `json:"group_image_gradient"`
+	GroupImageGradient json.RawMessage          `json:"group_image_gradient"` // array of colors
 	Members            ThreadsMemberList        `json:"members"`
 	ReadReceipts       []ReadReceipt            `json:"read_receipts"`
 	TimestampMS        jsontime.UnixMilliString `json:"timestamp_ms"`
 	MuteUntilMS        string                   `json:"mute_until_ms"`
 	IsUnread           bool                     `json:"is_unread"`
 	Messages           *ThreadsMessages         `json:"messages"`
+
+	LatestSnippetActivityContext *struct {
+		TimestampMS jsontime.UnixMilliString `json:"timestamp_ms"`
+	} `json:"latest_snippet_activity_context"`
 }
 
 type ThreadsMemberList struct {

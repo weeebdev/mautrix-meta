@@ -18,6 +18,7 @@ package instameow
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -59,6 +60,19 @@ var threadsRelayProviders = map[string]any{
 	"__relay_internal__pv__BarcelonaMessagesHasSnippetUnreadMessageCountrelayprovider":    false,
 	"__relay_internal__pv__BarcelonaMessagesHasMRUnreadCountEnabledrelayprovider":         false,
 }
+
+// threadsDeltaVariables are the graphql_variables sent in the lightspeed sync params. The web app
+// turns the Micg providers on; they're off here so deltas use the Slide message model.
+var threadsDeltaVariables = func() string {
+	data, _ := json.Marshal(map[string]bool{
+		"__relay_internal__pv__BarcelonaIsMicgMessageMigrationEnabledrelayprovider": true,
+		"__relay_internal__pv__BarcelonaIsMicgUserMigrationEnabledrelayprovider":    true,
+		"__relay_internal__pv__BarcelonaIsMicgThreadMigrationEnabledrelayprovider":  true,
+		"__relay_internal__pv__BarcelonaMessagesHasLiveChatMessagingrelayprovider":  false,
+		"__relay_internal__pv__BarcelonaHasWebFaviconsrelayprovider":                false,
+	})
+	return string(data)
+}()
 
 func threadsVars(vars map[string]any) map[string]any {
 	out := maps.Clone(threadsRelayProviders)
