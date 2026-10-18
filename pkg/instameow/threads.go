@@ -215,6 +215,18 @@ func (c *Client) threadsMessageList(ctx context.Context, threadID string, after 
 
 func (c *Client) threadsGetThread(ctx context.Context, req *slidetypes.GetThreadInfoRequest) (*slidetypes.ThreadInfoResponse, error) {
 	thread, err := c.threadsMessageList(ctx, req.ThreadFBID, nil, threadsMessagePageSize)
+	if errors.Is(err, ErrThreadNotFound) {
+		// DM portals are keyed by the other user's FBID (the Instagram thread key convention),
+		// so look up the one-to-one thread with that user instead.
+		userFBID, _ := strconv.ParseInt(req.ThreadFBID, 10, 64)
+		if userFBID == 0 {
+			return nil, err
+		}
+		var dm *slidetypes.ThreadsThread
+		if dm, err = c.threadsCreate1To1(ctx, userFBID); err == nil {
+			thread, err = c.threadsMessageList(ctx, dm.ID, nil, threadsMessagePageSize)
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -247,6 +259,17 @@ func cmpOr(vals ...int) int {
 }
 
 func (c *Client) threadsSendMessage(ctx context.Context, req *slidetypes.SendTextRequest) (*slidetypes.SendTextResponse, error) {
+	if (req.IGThreadIGID == nil || *req.IGThreadIGID == "") && len(req.RecipientIGIDs) == 1 {
+		// A new DM: the connector passes the other user's FBID as the recipient.
+		userFBID, _ := strconv.ParseInt(req.RecipientIGIDs[0], 10, 64)
+		if userFBID != 0 {
+			if dm, err := c.threadsCreate1To1(ctx, userFBID); err != nil {
+				return nil, fmt.Errorf("failed to open DM thread: %w", err)
+			} else {
+				req.IGThreadIGID = &dm.ID
+			}
+		}
+	}
 	if req.IGThreadIGID == nil || *req.IGThreadIGID == "" {
 		return nil, fmt.Errorf("thread ID missing from Threads send request")
 	}
