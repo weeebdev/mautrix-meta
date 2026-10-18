@@ -212,6 +212,13 @@ func (c *Client) makeStreamInitPayload(retryCount int) (json.RawMessage, error) 
 		SnapshotAtMS:             jsontime.UM(c.seqIDTS),
 		PrevalidatedGraphQLDocID: graphql.IGDSlideDeltaProcessorQuery,
 	}
+	database := int64(223)
+	if c.IsThreads() {
+		// threads.com subscribes to a different iris database with its own delta query
+		params.UserAgent = useragent.UserAgent
+		params.PrevalidatedGraphQLDocID = graphql.ThreadsSlideDeltasQuery
+		database = graphql.ThreadsSyncDatabase
+	}
 	if native {
 		params.UserAgent = instagramMobileUserAgent
 		params.SnapshotAppVersion = instagramMobileAppVersion
@@ -230,7 +237,7 @@ func (c *Client) makeStreamInitPayload(retryCount int) (json.RawMessage, error) 
 		return c.makeNativeStreamInitPayload(retryCount, marshaledSyncParams, marshaledCursor)
 	}
 	marshaledDatabaseQuery, err := json.Marshal(&socket.DatabaseQuery{
-		Database:          223,
+		Database:          database,
 		LastAppliedCursor: ptr.Ptr(string(marshaledCursor)),
 		SyncParams:        ptr.Ptr(string(marshaledSyncParams)),
 		EpochID:           0,
@@ -298,8 +305,7 @@ func (c *Client) handleOperation(ctx context.Context, rawOp *mdCoreSync.Operatio
 		c.log.Info().Any("resnapshot_payload", op.Resnapshot).Msg("Received resnapshot operation")
 		return fmt.Errorf("%w (%d): %s", errResnapshotRequired, op.Resnapshot.GetErrorType(), op.Resnapshot.GetErrorMessage())
 	case *mdCoreSync.Operation_Delta:
-		var deltaWrappers []*slidetypes.DeltaWrapper
-		err := json.Unmarshal(exstrings.UnsafeBytes(op.Delta.GetDelta()), &deltaWrappers)
+		deltaWrappers, err := slidetypes.ParseDeltaWrappers(exstrings.UnsafeBytes(op.Delta.GetDelta()))
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal delta: %w", err)
 		}

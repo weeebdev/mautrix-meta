@@ -277,6 +277,7 @@ type SchedulerJSDefineConfig struct {
 	XIGSharedData                 XIGSharedData
 	RelayAPIConfigDefaults        RelayAPIConfigDefaults
 	PolarisViewer                 PolarisViewer
+	BarcelonaSharedData           BarcelonaSharedData
 	DGWWebConfig                  DGWWebConfig
 }
 
@@ -337,4 +338,28 @@ type ServerNonce struct {
 
 type SchedulerJSRequire struct {
 	LSTable *table.LSTable
+}
+
+// BarcelonaSharedData is the threads.com page config holding the logged-in viewer, the Threads
+// counterpart of PolarisViewer.
+type BarcelonaSharedData struct {
+	DeviceID string `json:"device_id"`
+	Viewer   struct {
+		FBID                     string `json:"fbid"`
+		ID                       string `json:"id"`
+		InteropMessagingUserFBID string `json:"interop_messaging_user_fbid"`
+		Username                 string `json:"username"`
+		ProfilePictureURL        string `json:"profile_picture_url"`
+	} `json:"viewer"`
+}
+
+// AsPolarisViewer converts the Threads viewer so code written for Instagram's PolarisViewer works.
+func (b *BarcelonaSharedData) AsPolarisViewer() PolarisViewer {
+	var pv PolarisViewer
+	pv.ID = b.Viewer.ID
+	pv.Data.ID = b.Viewer.ID
+	pv.Data.Fbid = b.Viewer.FBID
+	pv.Data.Username = b.Viewer.Username
+	pv.Data.ProfilePicURL = b.Viewer.ProfilePictureURL
+	return pv
 }

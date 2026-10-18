@@ -37,6 +37,9 @@ import (
 )
 
 func (c *Client) EditGroupAvatar(ctx context.Context, threadID string, avatar []byte) error {
+	if c.IsThreads() {
+		return ErrNotSupportedOnThreads
+	}
 	detectedType := http.DetectContentType(avatar)
 	if detectedType != "image/jpeg" && detectedType != "image/png" {
 		img, _, err := image.Decode(bytes.NewReader(avatar))
@@ -93,6 +96,9 @@ func (c *Client) EditGroupAvatar(ctx context.Context, threadID string, avatar []
 }
 
 func (c *Client) RemoveGroupAvatar(ctx context.Context, threadID string) error {
+	if c.IsThreads() {
+		return ErrNotSupportedOnThreads
+	}
 	igVariables := &graphql.IGEditGroupAvatarGraphQLRequestPayload{
 		ThreadID:           threadID,
 		OfflineThreadingID: strconv.FormatInt(methods.GenerateEpochID(), 10),

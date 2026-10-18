@@ -175,7 +175,7 @@ func (c *Cookies) UpdateFromResponse(r *http.Response) {
 			c.values[MetaCookieName(cookie.Name)] = cookie.Value
 		}
 	}
-	if c.Platform == types.Instagram {
+	if c.Platform.IsSlide() {
 		for _, rawCookie := range r.Header.Values("Set-Cookie") {
 			c.updateRawIGRoutingCookie(rawCookie, now)
 		}

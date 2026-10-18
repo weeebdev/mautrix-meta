@@ -92,6 +92,16 @@ func (mc *MessageConverter) ToInstagram(
 			OfflineThreadingID: strconv.FormatInt(otid, 10),
 			ReplyToMessageID:   replyToMsgID,
 		}
+		switch content.MsgType {
+		case event.MsgVideo:
+			mediaReq.ThreadsAttachmentType = "VIDEO"
+		case event.MsgAudio:
+			mediaReq.ThreadsAttachmentType = "AUDIO"
+		case event.MsgFile:
+			mediaReq.ThreadsAttachmentType = "FILE"
+		default:
+			mediaReq.ThreadsAttachmentType = "IMAGE"
+		}
 		if meta.IGID != "" {
 			mediaReq.ThreadID = meta.IGID
 		} else {

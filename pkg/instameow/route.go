@@ -52,6 +52,9 @@ type routeDefinition struct {
 var ErrThreadNotFound = errors.New("instagram thread not found")
 
 func (c *Client) FetchThreadID(ctx context.Context, threadFBID int64) (*ThreadIGIDs, error) {
+	if c.IsThreads() {
+		return c.threadsFetchThreadID(ctx, threadFBID)
+	}
 	if c == nil {
 		return nil, ErrClientIsNil
 	}

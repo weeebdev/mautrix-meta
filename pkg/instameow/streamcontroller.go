@@ -23,9 +23,11 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/jsontime"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/instameow/thrift"
@@ -107,14 +109,21 @@ func (c *Client) getStreamControllerSocketOptions() dgw.SocketOptions {
 		OnConnect: func(ctx context.Context, fatalError func(error)) error {
 			// Note: the official web app subscribes to multiple streams like presence and other realtime events,
 			// but we only support typing for now
-			params, err := json.Marshal(&typingSubscribeParameters{
+			subscribeParams := &typingSubscribeParameters{
 				Method:      "FBGQLS:XDT_DIRECT_REALTIME_EVENT",
 				DocID:       graphql.IGDTypingIndicatorClientSubscription,
 				RoutingHint: "IGDTypingIndicatorClientSubscription",
 				Body:        "true",
 				AcceptAck:   "RSAck",
 				HTTPReferer: "https://www.instagram.com/direct/",
-			})
+			}
+			if c.IsThreads() {
+				subscribeParams.Method = "FBGQLS:XFB_TYPING_INDICATOR_SUBSCRIBE"
+				subscribeParams.DocID = graphql.ThreadsTypingIndicatorSubscription
+				subscribeParams.RoutingHint = "BarcelonaMessageListTypingIndicatorFooterSubscription"
+				subscribeParams.HTTPReferer = c.GetEndpoint("messages")
+			}
+			params, err := json.Marshal(subscribeParams)
 			if err != nil {
 				return fmt.Errorf("failed to marshal typing subscribe parameters: %w", err)
 			}
@@ -133,7 +142,15 @@ func (c *Client) getStreamControllerSocketOptions() dgw.SocketOptions {
 			tsp.InputData.UserID = c.configs.BrowserConfigTable.PolarisViewer.ID
 			tsp.Options.UseOSSResponseFormat = true
 			tsp.Options.ClientHasODSUsecaseCounters = true
-			tspMarshaled, err := json.Marshal(tsp)
+			var tspMarshaled []byte
+			if c.IsThreads() {
+				tspMarshaled, err = json.Marshal(&threadsTypingSubscribePayload{
+					RecipientID: strconv.FormatInt(c.threadsOwnFBID(), 10),
+					Options:     tsp.Options,
+				})
+			} else {
+				tspMarshaled, err = json.Marshal(tsp)
+			}
 			if err != nil {
 				return fmt.Errorf("failed to marshal typing subscribe payload: %w", err)
 			}
@@ -181,6 +198,12 @@ func (c *Client) handleStreamControllerFrame(ctx context.Context, frame []byte) 
 		if delta.Data == nil {
 			continue
 		}
+		if c.IsThreads() {
+			if err = c.handleThreadsTypingData(ctx, delta.Data.Bytes); err != nil {
+				return err
+			}
+			continue
+		}
 		unexpectedData := false
 		var evt slidetypes.StreamControllerPayload
 		if err = json.Unmarshal(delta.Data.Bytes, &evt); err != nil {
@@ -215,6 +238,50 @@ func (c *Client) handleStreamControllerFrame(ctx context.Context, frame []byte) 
 				RawJSON("data", delta.Data.Bytes).
 				Msg("Unexpected data in stream controller payload")
 		}
+	}
+	return nil
+}
+
+// threadsTypingSubscribePayload is the request body of the threads.com typing subscription.
+type threadsTypingSubscribePayload struct {
+	RecipientID string `json:"recipient_id"`
+	Options     struct {
+		UseOSSResponseFormat        bool `json:"useOSSResponseFormat"`
+		ClientHasODSUsecaseCounters bool `json:"client_has_ods_usecase_counters"`
+	} `json:"%options"`
+}
+
+// threadsTypingEvent is a typing update from the threads.com typing subscription.
+type threadsTypingEvent struct {
+	Data struct {
+		Typing *struct {
+			SenderID       json.Number `json:"sender_id"`
+			ThreadID       json.Number `json:"thread_id"`
+			ActivityStatus int         `json:"activity_status"`
+			TTL            int         `json:"ttl"`
+		} `json:"xfb_typing_indicator_subscribe"`
+	} `json:"data"`
+}
+
+func (c *Client) handleThreadsTypingData(ctx context.Context, data []byte) error {
+	var evt threadsTypingEvent
+	if err := json.Unmarshal(data, &evt); err != nil {
+		zerolog.Ctx(ctx).Err(err).Msg("Failed to unmarshal Threads typing payload")
+		return nil
+	} else if evt.Data.Typing == nil {
+		zerolog.Ctx(ctx).Debug().Msg("Ignoring Threads stream controller payload without typing data")
+		return nil
+	}
+	senderID, _ := evt.Data.Typing.SenderID.Int64()
+	err := c.eventHandler(ctx, &slidetypes.TypingNotification{
+		ThreadID:       evt.Data.Typing.ThreadID.String(),
+		Timestamp:      jsontime.UnixMicro{Time: time.Now()},
+		SenderID:       senderID,
+		TTL:            evt.Data.Typing.TTL,
+		ActivityStatus: evt.Data.Typing.ActivityStatus,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to handle typing notification event: %w", err)
 	}
 	return nil
 }

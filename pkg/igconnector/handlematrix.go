@@ -456,19 +456,24 @@ func (ic *IGClient) HandleMatrixMembership(ctx context.Context, msg *bridgev2.Ma
 	targetIGID, err := ic.Main.DB.GetIGUserForFBID(ctx, targetID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get IGID for target user: %w", err)
-	} else if targetIGID == "" {
+	} else if targetIGID == "" && !ic.Main.IsThreads() {
+		// threads.com identifies members by FBID, so the IGID is only required on Instagram
 		return nil, fmt.Errorf("target user IGID not found")
 	}
+	targetFBID := strconv.FormatInt(targetID, 10)
 
 	switch msg.Type {
 	case bridgev2.Invite:
 		// TODO sync with thread info?
 		//var resp *slidetypes.AddMembersResponse
-		_, err = ic.Client.AddMembers(ctx, slidetypes.MakeAddMembersRequest(threadID, targetIGID))
+		req := slidetypes.MakeAddMembersRequest(threadID, targetIGID)
+		req.ThreadsUserFBIDs = []string{targetFBID}
+		_, err = ic.Client.AddMembers(ctx, req)
 	case bridgev2.Kick:
 		_, err = ic.Client.RemoveMember(ctx, &slidetypes.RemoveMemberRequest{
-			ThreadID: threadID,
-			UserIGID: targetIGID,
+			ThreadID:        threadID,
+			UserIGID:        targetIGID,
+			ThreadsUserFBID: targetFBID,
 		})
 	case bridgev2.Leave:
 		_, err = ic.Client.LeaveGroup(ctx, &slidetypes.LeaveThreadRequest{ThreadID: threadID})

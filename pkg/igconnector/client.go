@@ -128,9 +128,10 @@ func (ic *IGConnector) getProxy(reason string) (string, error) {
 }
 
 func (ic *IGClient) ensureIGClient() {
-	if ic.LoginMeta.Cookies != nil && ic.Client == nil && ic.LoginMeta.Platform == types.Instagram {
+	if ic.LoginMeta.Cookies != nil && ic.Client == nil && ic.LoginMeta.Platform == ic.Main.GetPlatform() {
 		ic.LoginMeta.Cookies.Platform = ic.LoginMeta.Platform
 		ic.Client = instameow.NewClient(instameow.ClientParams{
+			Platform:      ic.LoginMeta.Platform,
 			Cookies:       ic.LoginMeta.Cookies,
 			Log:           ic.UserLogin.Log.With().Str("component", "instameow").Logger(),
 			Settings:      ic.Main.Bridge.GetHTTPClientSettings(),
@@ -151,7 +152,7 @@ func (ic *IGClient) ExportCredentials(ctx context.Context) any {
 }
 
 func (ic *IGClient) Connect(ctx context.Context) {
-	if ic.LoginMeta.Platform != types.Instagram {
+	if ic.LoginMeta.Platform != ic.Main.GetPlatform() {
 		ic.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateBadCredentials, Error: MetaNotInstagram})
 		return
 	}

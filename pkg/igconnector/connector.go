@@ -21,6 +21,8 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
+
 	"go.mau.fi/mautrix-meta/pkg/metadb"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/igconv"
 	"go.mau.fi/mautrix-meta/pkg/msgconv/mediadl"
@@ -31,6 +33,24 @@ type IGConnector struct {
 	Config  Config
 	MsgConv *igconv.MessageConverter
 	DB      *metadb.MetaDB
+
+	// Platform is types.Instagram (the default) or types.Threads for threads.com DMs.
+	Platform types.Platform
+	// Name overrides the bridge name returned by GetName, if set.
+	Name *bridgev2.BridgeName
+}
+
+// GetPlatform returns the platform this connector bridges.
+func (ic *IGConnector) GetPlatform() types.Platform {
+	if ic != nil && ic.Platform == types.Threads {
+		return types.Threads
+	}
+	return types.Instagram
+}
+
+// IsThreads returns true if the connector bridges threads.com instead of Instagram.
+func (ic *IGConnector) IsThreads() bool {
+	return ic.GetPlatform() == types.Threads
 }
 
 var (
@@ -60,6 +80,19 @@ func (ic *IGConnector) SetMaxFileSize(maxSize int64) {
 }
 
 func (ic *IGConnector) GetName() bridgev2.BridgeName {
+	if ic.Name != nil {
+		return *ic.Name
+	}
+	if ic.IsThreads() {
+		return bridgev2.BridgeName{
+			DisplayName:          "Threads",
+			NetworkURL:           "https://www.threads.com",
+			NetworkID:            "threads",
+			BeeperBridgeType:     "threadsgo",
+			DefaultPort:          29341,
+			DefaultCommandPrefix: "!threads",
+		}
+	}
 	return bridgev2.BridgeName{
 		DisplayName:          "Instagram",
 		NetworkURL:           "https://instagram.com",

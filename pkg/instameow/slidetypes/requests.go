@@ -42,6 +42,9 @@ type SendTextRequest struct {
 }
 
 type SendMediaRequest struct {
+	// ThreadsAttachmentType is the threads.com media type (IMAGE, VIDEO, AUDIO or FILE).
+	ThreadsAttachmentType string `json:"-"`
+
 	AttachmentFBID            string  `json:"attachment_fbid"`
 	ThreadID                  string  `json:"thread_id"`
 	OfflineThreadingID        string  `json:"offline_threading_id"`
@@ -88,9 +91,14 @@ type LeaveThreadRequest struct {
 type RemoveMemberRequest struct {
 	ThreadID string `json:"thread_fbid"`
 	UserIGID string `json:"user_igid"`
+	// ThreadsUserFBID is the messaging FBID threads.com uses instead of the IGID.
+	ThreadsUserFBID string `json:"-"`
 }
 
 type AddMembersRequest struct {
+	// ThreadsUserFBIDs are the messaging FBIDs threads.com uses instead of the IGIDs.
+	ThreadsUserFBIDs []string `json:"-"`
+
 	ThreadID                   string   `json:"thread_fbid"`
 	UserIGIDs                  []string `json:"user_igids"`
 	PinnedThreadsRenderEnabled bool     `json:"__relay_internal__pv__IGDPinnedThreadsRenderEnabledGKrelayprovider"`
@@ -111,6 +119,8 @@ func MakeAddMembersRequest(threadID string, userIGIDs ...string) *AddMembersRequ
 type ModifyAdminsRequest struct {
 	ThreadID  string   `json:"thread_fbid"`
 	UserIGIDs []string `json:"user_igids"`
+	// ThreadsUserFBIDs are the messaging FBIDs threads.com uses instead of the IGIDs.
+	ThreadsUserFBIDs []string `json:"-"`
 }
 
 type AcceptMessageRequestRequest struct {

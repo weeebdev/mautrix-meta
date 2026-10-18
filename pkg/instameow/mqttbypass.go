@@ -39,6 +39,9 @@ type indicateActivity struct {
 }
 
 func (c *Client) SetTyping(ctx context.Context, threadID string, typing bool) error {
+	if c.IsThreads() {
+		return c.threadsSetTyping(ctx, threadID, typing)
+	}
 	if c == nil {
 		return ErrClientIsNil
 	} else if !c.enableTyping {

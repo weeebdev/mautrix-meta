@@ -323,10 +323,13 @@ func (c *HTTPClient) NewHTTPQuery() *HTTPQuery {
 	/*if c.configs.BrowserConfigTable.CurrentUserInitialData.UserID != "0" {
 		query.Av = c.configs.BrowserConfigTable.CurrentUserInitialData.UserID
 	}*/
-	if c.parent.GetPlatform() == types.Instagram {
+	switch c.parent.GetPlatform() {
+	case types.Instagram:
 		query.D = "www"
 		query.Jssesw = "1"
-	} else {
+	case types.Threads:
+		// threads.com sends neither __d/jssesw nor __aaid
+	default:
 		query.Aaid = "0"
 	}
 	return query

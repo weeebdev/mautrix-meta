@@ -191,6 +191,36 @@ type DeltaWrapper struct {
 	} `json:"data"`
 }
 
+// ParseDeltaWrappers parses the delta payload of a sync operation. Instagram puts the deltas under
+// data.slide_delta_processor; threads.com uses its own delta query, so any other array under data
+// is accepted too.
+func ParseDeltaWrappers(raw []byte) ([]*DeltaWrapper, error) {
+	var generic []struct {
+		Data map[string]json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &generic); err != nil {
+		return nil, err
+	}
+	out := make([]*DeltaWrapper, 0, len(generic))
+	for _, item := range generic {
+		wrapper := &DeltaWrapper{}
+		if deltas, ok := item.Data["slide_delta_processor"]; ok {
+			if err := json.Unmarshal(deltas, &wrapper.Data.SlideDeltaProcessor); err != nil {
+				return nil, err
+			}
+		} else {
+			for _, value := range item.Data {
+				var deltas []*Delta
+				if len(value) > 0 && value[0] == '[' && json.Unmarshal(value, &deltas) == nil {
+					wrapper.Data.SlideDeltaProcessor = append(wrapper.Data.SlideDeltaProcessor, deltas...)
+				}
+			}
+		}
+		out = append(out, wrapper)
+	}
+	return out, nil
+}
+
 type Delta struct {
 	TypeName   string          `json:"__typename"`
 	UQSeqID    int64           `json:"uq_seq_id,string"`

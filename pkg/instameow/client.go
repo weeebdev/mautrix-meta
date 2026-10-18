@@ -39,6 +39,11 @@ import (
 )
 
 type Client struct {
+	// platform is types.Instagram (default) or types.Threads.
+	platform types.Platform
+	// threadsMailboxID is the threads.com mailbox ID, used for inbox pagination.
+	threadsMailboxID string
+
 	http    *httpclient.HTTPClient
 	configs *httpclient.Configs
 	cookies *cookies.Cookies
@@ -88,6 +93,8 @@ type EventHandler func(context.Context, slidetypes.ClientEvent) error
 var _ httpclient.Client = (*Client)(nil)
 
 type ClientParams struct {
+	// Platform selects instagram.com (default) or threads.com.
+	Platform      types.Platform
 	Cookies       *cookies.Cookies
 	Log           zerolog.Logger
 	Settings      exhttp.ClientSettings
@@ -106,7 +113,12 @@ type ClientParams struct {
 }
 
 func NewClient(params ClientParams) *Client {
+	platform := params.Platform
+	if platform != types.Threads {
+		platform = types.Instagram
+	}
 	c := &Client{
+		platform:      platform,
 		cookies:       params.Cookies,
 		log:           &params.Log,
 		seqID:         params.SeqID,
@@ -154,6 +166,9 @@ func (c *Client) loadIndex(ctx context.Context) error {
 	err := moduleLoader.Load(ctx, c.GetEndpoint("messages"))
 	if err != nil {
 		return fmt.Errorf("failed to load inbox: %w", err)
+	}
+	if c.platform == types.Threads {
+		c.applyThreadsPageConfig()
 	}
 	c.configs.Setup(c.IsAuthenticated())
 	c.lastReload = time.Now()
@@ -233,6 +248,9 @@ func (c *Client) LoadIndex(ctx context.Context) (*types.PolarisViewer, *slidetyp
 }
 
 func (c *Client) GetOwnFBID() int64 {
+	if c != nil && c.platform == types.Threads {
+		return c.threadsOwnFBID()
+	}
 	if c == nil || c.configs == nil ||
 		c.configs.BrowserConfigTable.CurrentUserInitialData.IGUserEIMU == "" ||
 		c.configs.BrowserConfigTable.PolarisViewer.Data.Fbid != c.configs.BrowserConfigTable.CurrentUserInitialData.NonFacebookUserID {
@@ -250,11 +268,22 @@ func (c *Client) GetCookies() *cookies.Cookies {
 }
 
 func (c *Client) GetEndpoint(name string) string {
+	if c != nil && c.platform == types.Threads {
+		return endpoints.ThreadsEndpoints[name]
+	}
 	return endpoints.InstagramEndpoints[name]
 }
 
 func (c *Client) GetPlatform() types.Platform {
+	if c != nil && c.platform == types.Threads {
+		return types.Threads
+	}
 	return types.Instagram
+}
+
+// IsThreads returns true if the client talks to threads.com instead of instagram.com.
+func (c *Client) IsThreads() bool {
+	return c != nil && c.platform == types.Threads
 }
 
 func (c *Client) IsAuthenticated() bool {

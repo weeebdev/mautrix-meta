@@ -21,6 +21,9 @@ const (
 	MessengerLiteIOS
 	MessengerLiteAndroid
 	FacebookTor
+	// Threads is threads.com direct messages, which run on the same Slide
+	// messaging backend as Instagram web DMs.
+	Threads
 )
 
 func PlatformFromString(s string) Platform {
@@ -37,6 +40,8 @@ func PlatformFromString(s string) Platform {
 		return MessengerLiteIOS
 	case "messenger-lite-android":
 		return MessengerLiteAndroid
+	case "threads":
+		return Threads
 	default:
 		return Unset
 	}
@@ -56,6 +61,8 @@ func (p *Platform) UnmarshalJSON(data []byte) error {
 		*p = MessengerLiteIOS
 	case `"messenger-lite-android"`, `6`:
 		*p = MessengerLiteAndroid
+	case `"threads"`, `7`:
+		*p = Threads
 	default:
 		*p = Unset
 	}
@@ -76,6 +83,8 @@ func (p Platform) String() string {
 		return "messenger-lite"
 	case MessengerLiteAndroid:
 		return "messenger-lite-android"
+	case Threads:
+		return "threads"
 	default:
 		return ""
 	}
@@ -105,6 +114,16 @@ func (p Platform) IsInstagram() bool {
 	return p == Instagram
 }
 
+func (p Platform) IsThreads() bool {
+	return p == Threads
+}
+
+// IsSlide returns true for the platforms whose web messaging runs on the Slide backend
+// (Instagram and Threads). They share cookies, the DGW sockets and the message model.
+func (p Platform) IsSlide() bool {
+	return p == Instagram || p == Threads
+}
+
 func (p Platform) IsValid() bool {
-	return p == Instagram || p == Facebook || p == FacebookTor || p == Messenger || p == MessengerLiteIOS || p == MessengerLiteAndroid
+	return p == Instagram || p == Facebook || p == FacebookTor || p == Messenger || p == MessengerLiteIOS || p == MessengerLiteAndroid || p == Threads
 }

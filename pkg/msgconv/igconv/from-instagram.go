@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	gohtml "html"
 	"net/url"
 	"strings"
 
@@ -164,6 +165,8 @@ func (mc *MessageConverter) ToMatrix(
 		cm.Parts = append(cm.Parts, mc.wrapText(ctx, content.UnifiedResponse, nil))
 	case *slidetypes.MessageContentAISearchResponse:
 		cm.Parts = append(cm.Parts, mc.wrapText(ctx, content.MessageTextBody, nil))
+	case *slidetypes.MessageContentThreadsPostShare:
+		cm.Parts = append(cm.Parts, mc.wrapThreadsPostShare(content))
 	case slidetypes.MessageContentUnknown:
 		cm.Parts = append(cm.Parts, mc.wrapUnsupportedContent(content))
 	default:
@@ -438,4 +441,38 @@ func (mc *MessageConverter) wrapUnsupportedContent(content any) *bridgev2.Conver
 		},
 		Extra: unsupportedContentToExtra(content),
 	}
+}
+
+// wrapThreadsPostShare renders a shared Threads post as text: the sender's comment, the post text
+// as a quote, and a link to the post.
+func (mc *MessageConverter) wrapThreadsPostShare(content *slidetypes.MessageContentThreadsPostShare) *bridgev2.ConvertedMessagePart {
+	var plain, html strings.Builder
+	if content.ShareTextBody != "" {
+		plain.WriteString(content.ShareTextBody + "\n\n")
+		html.WriteString("<p>" + htmlEscapeLines(content.ShareTextBody) + "</p>")
+	}
+	if content.PostTextBody != "" {
+		plain.WriteString("> " + strings.ReplaceAll(content.PostTextBody, "\n", "\n> ") + "\n")
+		html.WriteString("<blockquote>" + htmlEscapeLines(content.PostTextBody) + "</blockquote>")
+	}
+	if postURL := content.PostURL(); postURL != "" {
+		plain.WriteString(postURL)
+		html.WriteString(`<p><a href="` + gohtml.EscapeString(postURL) + `">` + gohtml.EscapeString(postURL) + "</a></p>")
+	} else if plain.Len() == 0 {
+		plain.WriteString("Shared a Threads post")
+		html.WriteString("<p><em>Shared a Threads post</em></p>")
+	}
+	return &bridgev2.ConvertedMessagePart{
+		Type: event.EventMessage,
+		Content: &event.MessageEventContent{
+			MsgType:       event.MsgText,
+			Body:          strings.TrimSpace(plain.String()),
+			Format:        event.FormatHTML,
+			FormattedBody: html.String(),
+		},
+	}
+}
+
+func htmlEscapeLines(text string) string {
+	return strings.ReplaceAll(gohtml.EscapeString(text), "\n", "<br/>")
 }

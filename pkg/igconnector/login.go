@@ -41,8 +41,11 @@ func (ic *IGConnector) CreateLogin(ctx context.Context, user *bridgev2.User, flo
 			User: user,
 			Main: ic,
 		}, nil
-	case FlowIDCookies:
+	case FlowIDCookies, FlowIDThreadsCookies:
 	default:
+		return nil, bridgev2.ErrInvalidLoginFlowID
+	}
+	if ic.IsThreads() && flowID != FlowIDThreadsCookies {
 		return nil, bridgev2.ErrInvalidLoginFlowID
 	}
 
@@ -60,7 +63,18 @@ var (
 	}
 )
 
+const FlowIDThreadsCookies = "threads"
+
+var loginFlowThreads = bridgev2.LoginFlow{
+	Name:        "Cookies",
+	Description: "Login using cookies from threads.com",
+	ID:          FlowIDThreadsCookies,
+}
+
 func (ic *IGConnector) GetLoginFlows() []bridgev2.LoginFlow {
+	if ic.IsThreads() {
+		return []bridgev2.LoginFlow{loginFlowThreads}
+	}
 	return []bridgev2.LoginFlow{loginFlowInstagramNative, loginFlowInstagram, loginFlowInstagramPassword}
 }
 
@@ -89,7 +103,24 @@ func cookieListToFields(cookies []cookies.MetaCookieName, domain string, require
 	return fields
 }
 
+const threadsWebLoggedInURLPattern = "^https://www\\.threads\\.com/(?:messages(?:/t/[0-9]+)?/?)?(?:\\?.*)?$"
+
 func (m *MetaCookieLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
+	if m.Main.IsThreads() {
+		return &bridgev2.LoginStep{
+			Type:         bridgev2.LoginStepTypeCookies,
+			StepID:       LoginStepIDCookies,
+			Instructions: "Enter a JSON object with your cookies, or a cURL command copied from browser devtools.",
+			CookiesParams: &bridgev2.LoginCookiesParams{
+				URL: "https://www.threads.com/login",
+				Fields: append(
+					cookieListToFields(cookies.IGRequiredCookies, "threads.com", true),
+					cookieListToFields(cookies.IGOptionalCookies, "threads.com", false)...,
+				),
+				WaitForURLPattern: threadsWebLoggedInURLPattern,
+			},
+		}, nil
+	}
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeCookies,
 		StepID:       LoginStepIDCookies,
@@ -110,6 +141,7 @@ func (m *MetaCookieLogin) Cancel() {}
 
 func getInstaClient(log zerolog.Logger, conn *IGConnector, c *cookies.Cookies, useProxy bool) (*instameow.Client, error) {
 	client := instameow.NewClient(instameow.ClientParams{
+		Platform:                  conn.GetPlatform(),
 		Cookies:                   c,
 		Log:                       log,
 		Settings:                  conn.Bridge.GetHTTPClientSettings(),
@@ -238,7 +270,7 @@ func loginWithCookies(
 }
 
 func submitInstagramCookies(ctx context.Context, conn *IGConnector, user *bridgev2.User, strCookies map[string]string) (*bridgev2.LoginStep, error) {
-	c := &cookies.Cookies{Platform: types.Instagram}
+	c := &cookies.Cookies{Platform: conn.GetPlatform()}
 	strCookiesCopy := map[cookies.MetaCookieName]string{}
 	for key, val := range strCookies {
 		strCookiesCopy[cookies.MetaCookieName(key)] = val

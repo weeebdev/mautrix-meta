@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/rs/zerolog"
 
@@ -29,78 +30,136 @@ import (
 )
 
 func (c *Client) SendMessage(ctx context.Context, req *slidetypes.SendTextRequest) (*slidetypes.SendTextResponse, error) {
+	if c.IsThreads() {
+		return c.threadsSendMessage(ctx, req)
+	}
 	return makeGraphQLRequest[*slidetypes.SendTextResponse](ctx, c, "IGDirectTextSendMutation", req, true)
 }
 
 func (c *Client) SendMedia(ctx context.Context, req *slidetypes.SendMediaRequest) (*slidetypes.SendMediaResponse, error) {
+	if c.IsThreads() {
+		return c.threadsSendMedia(ctx, req)
+	}
 	return makeGraphQLRequest[*slidetypes.SendMediaResponse](ctx, c, "IGDirectMediaSendMutation", req, true)
 }
 
 func (c *Client) EditMessage(ctx context.Context, req *slidetypes.EditMessageRequest) (*slidetypes.EditMessageResponse, error) {
+	if c.IsThreads() {
+		return c.threadsEditMessage(ctx, req)
+	}
 	return makeGraphQLRequest[*slidetypes.EditMessageResponse](ctx, c, "IGDirectEditMessageMutation", req, true)
 }
 
 func (c *Client) UnsendMessage(ctx context.Context, req *slidetypes.UnsendMessageRequest) (*slidetypes.UnsendMessageResponse, error) {
+	if c.IsThreads() {
+		return c.threadsUnsendMessage(ctx, req)
+	}
 	return makeGraphQLRequest[*slidetypes.UnsendMessageResponse](ctx, c, "IGDMessageUnsendDialogOffMsysMutation", req, true)
 }
 
 func (c *Client) SendReaction(ctx context.Context, req *slidetypes.CreateReactionRequest) (*slidetypes.SendReactionResponse, error) {
+	if c.IsThreads() {
+		return c.threadsSendReaction(ctx, req)
+	}
 	return makeGraphQLRequest[*slidetypes.SendReactionResponse](ctx, c, "IGDirectReactionSendMutation", req, true)
 }
 
 func (c *Client) MarkRead(ctx context.Context, req *slidetypes.MarkReadRequest) (*slidetypes.MarkReadResponse, error) {
+	if c.IsThreads() {
+		// Sent from MarkReadValidation, which has the timestamp threads.com needs
+		return &slidetypes.MarkReadResponse{}, nil
+	}
 	return makeGraphQLRequest[*slidetypes.MarkReadResponse](ctx, c, "useIGDMarkThreadAsReadMutation", req, true)
 }
 
 func (c *Client) MarkReadValidation(ctx context.Context, req *slidetypes.MarkReadRequest) (*slidetypes.MarkReadValidationResponse, error) {
+	if c.IsThreads() {
+		return c.threadsMarkRead(ctx, req)
+	}
 	return makeGraphQLRequest[*slidetypes.MarkReadValidationResponse](ctx, c, "useIGDMarkThreadAsReadValidationMutation", req, false)
 }
 
 func (c *Client) DeleteThread(ctx context.Context, req *slidetypes.DeleteThreadRequest) (*slidetypes.DeleteThreadResponse, error) {
+	if c.IsThreads() {
+		return &slidetypes.DeleteThreadResponse{}, c.threadsDeleteThread(ctx, req.ThreadID)
+	}
 	return makeGraphQLRequest[*slidetypes.DeleteThreadResponse](ctx, c, "IGDInboxInfoDeleteThreadDialogOffMsysMutation", req, true)
 }
 
 func (c *Client) LeaveGroup(ctx context.Context, req *slidetypes.LeaveThreadRequest) (*slidetypes.LeaveThreadResponse, error) {
+	if c.IsThreads() {
+		return &slidetypes.LeaveThreadResponse{}, c.threadsRemoveMember(ctx, req.ThreadID, strconv.FormatInt(c.threadsOwnFBID(), 10))
+	}
 	return makeGraphQLRequest[*slidetypes.LeaveThreadResponse](ctx, c, "useIGDLeaveChatMutation", req, true)
 }
 
 func (c *Client) RemoveMember(ctx context.Context, req *slidetypes.RemoveMemberRequest) (*slidetypes.RemoveMemberResponse, error) {
+	if c.IsThreads() {
+		return &slidetypes.RemoveMemberResponse{}, c.threadsRemoveMember(ctx, req.ThreadID, req.ThreadsUserFBID)
+	}
 	return makeGraphQLRequest[*slidetypes.RemoveMemberResponse](ctx, c, "IGDRemoveFromGroupDialogItemOffMsysMutation", req, true)
 }
 
 func (c *Client) AddMembers(ctx context.Context, req *slidetypes.AddMembersRequest) (*slidetypes.AddMembersResponse, error) {
+	if c.IsThreads() {
+		return c.threadsAddMembers(ctx, req)
+	}
 	return makeGraphQLRequest[*slidetypes.AddMembersResponse](ctx, c, "IGDAddParticipantSubmitBarMutation", req, true)
 }
 
 func (c *Client) AddAdmins(ctx context.Context, req *slidetypes.ModifyAdminsRequest) (*slidetypes.AddAdminsResponse, error) {
+	if c.IsThreads() {
+		return &slidetypes.AddAdminsResponse{}, c.threadsModifyAdmins(ctx, req.ThreadID, req.ThreadsUserFBIDs, true)
+	}
 	return makeGraphQLRequest[*slidetypes.AddAdminsResponse](ctx, c, "IGDAddAdminDialogItemOffMsysMutation", req, true)
 }
 
 func (c *Client) RemoveAdmins(ctx context.Context, req *slidetypes.ModifyAdminsRequest) (*slidetypes.RemoveAdminsResponse, error) {
+	if c.IsThreads() {
+		return &slidetypes.RemoveAdminsResponse{}, c.threadsModifyAdmins(ctx, req.ThreadID, req.ThreadsUserFBIDs, false)
+	}
 	return makeGraphQLRequest[*slidetypes.RemoveAdminsResponse](ctx, c, "IGDRemoveAdminDialogItemOffMsysMutation", req, true)
 }
 
 func (c *Client) AcceptMessageRequest(ctx context.Context, req *slidetypes.AcceptMessageRequestRequest) (*slidetypes.AcceptMessageRequestResponse, error) {
+	if c.IsThreads() {
+		return &slidetypes.AcceptMessageRequestResponse{}, c.threadsAcceptMessageRequest(ctx, req.ThreadID)
+	}
 	return makeGraphQLRequest[*slidetypes.AcceptMessageRequestResponse](ctx, c, "useIGDirectAcceptMessageRequestMutation", req, true)
 }
 
 func (c *Client) MuteThread(ctx context.Context, req *slidetypes.MuteThreadRequest) (*slidetypes.MuteThreadResponse, error) {
+	if c.IsThreads() {
+		return &slidetypes.MuteThreadResponse{}, c.threadsMuteThread(ctx, req.ThreadID, req.MuteSeconds)
+	}
 	return makeGraphQLRequest[*slidetypes.MuteThreadResponse](ctx, c, "IGDInboxInfoMuteToggleOffMsysMutation", req, true)
 }
 
 func (c *Client) PinThread(ctx context.Context, req *slidetypes.PinThreadRequest) (*slidetypes.PinThreadResponse, error) {
+	if c.IsThreads() {
+		return nil, ErrNotSupportedOnThreads
+	}
 	return makeGraphQLRequest[*slidetypes.PinThreadResponse](ctx, c, "useIGDPinThreadMutation", req, true)
 }
 
 func (c *Client) PinMessage(ctx context.Context, req *slidetypes.PinMessageRequest) (*slidetypes.PinMessageResponse, error) {
+	if c.IsThreads() {
+		return nil, ErrNotSupportedOnThreads
+	}
 	return makeGraphQLRequest[*slidetypes.PinMessageResponse](ctx, c, "useIGDPinMessageOffMsysMutation", req, true)
 }
 
 func (c *Client) UnpinMessage(ctx context.Context, req *slidetypes.PinMessageRequest) (*slidetypes.UnpinMessageResponse, error) {
+	if c.IsThreads() {
+		return nil, ErrNotSupportedOnThreads
+	}
 	return makeGraphQLRequest[*slidetypes.UnpinMessageResponse](ctx, c, "useIGDUnpinMessageOffMsysMutation", req, true)
 }
 
 func (c *Client) GetMailbox(ctx context.Context) (*slidetypes.MailboxResponse, error) {
+	if c.IsThreads() {
+		return c.threadsGetMailbox(ctx)
+	}
 	return makeGraphQLRequest[*slidetypes.MailboxResponse](
 		ctx, c, "PolarisDirectInboxQuery",
 		slidetypes.MakeMailboxRequest(c.configs.BrowserConfigTable.IGDMqttWebDeviceID.ClientID),
@@ -109,34 +168,58 @@ func (c *Client) GetMailbox(ctx context.Context) (*slidetypes.MailboxResponse, e
 }
 
 func (c *Client) PaginateMailbox(ctx context.Context, req *slidetypes.PaginateMailboxRequest) (*slidetypes.PaginateMailboxResponse, error) {
+	if c.IsThreads() {
+		return c.threadsPaginateMailbox(ctx, req)
+	}
 	return makeGraphQLRequest[*slidetypes.PaginateMailboxResponse](ctx, c, "IGDThreadListOffMsysPaginationQuery", req, true)
 }
 
 func (c *Client) GetThread(ctx context.Context, req *slidetypes.GetThreadInfoRequest) (*slidetypes.ThreadInfoResponse, error) {
+	if c.IsThreads() {
+		return c.threadsGetThread(ctx, req)
+	}
 	return makeGraphQLRequest[*slidetypes.ThreadInfoResponse](ctx, c, "IGDThreadDetailQuery", req, true)
 }
 
 func (c *Client) PaginateMessages(ctx context.Context, req *slidetypes.PaginateMessagesRequest) (*slidetypes.PaginateMessagesResponse, error) {
+	if c.IsThreads() {
+		return c.threadsPaginateMessages(ctx, req)
+	}
 	return makeGraphQLRequest[*slidetypes.PaginateMessagesResponse](ctx, c, "IGDMessageListOffMsysQuery", req, true)
 }
 
 func (c *Client) GetProfile(ctx context.Context, igid string) (*slidetypes.ProfilePageResponse, error) {
+	if c.IsThreads() {
+		return nil, ErrNotSupportedOnThreads
+	}
 	return makeGraphQLRequest[*slidetypes.ProfilePageResponse](ctx, c, "PolarisProfilePageContentQuery", slidetypes.MakeProfilePageRequest(igid), true)
 }
 
 func (c *Client) GetUserForNewDM(ctx context.Context, fbid int64) (*slidetypes.UserInfoResponse, error) {
+	if c.IsThreads() {
+		return c.threadsGetUserForNewDM(ctx, fbid)
+	}
 	return makeGraphQLRequest[*slidetypes.UserInfoResponse](ctx, c, "useIGDCreateOptimisticThreadUserQuery", &slidetypes.GetUserInfoByFBIDRequest{MessagingUserFBID: fbid}, true)
 }
 
 func (c *Client) SearchUsers(ctx context.Context, query string) (*slidetypes.SearchResponse, error) {
+	if c.IsThreads() {
+		return c.threadsSearchUsers(ctx, query)
+	}
 	return makeGraphQLRequest[*slidetypes.SearchResponse](ctx, c, "IGDOmniPickerSearchResultsListQuery", slidetypes.SearchRequest{SearchText: query}, true)
 }
 
 func (c *Client) CreateGroup(ctx context.Context, req *slidetypes.CreateGroupRequest) (*slidetypes.CreateGroupResponse, error) {
+	if c.IsThreads() {
+		return c.threadsCreateGroup(ctx, req)
+	}
 	return makeGraphQLRequest[*slidetypes.CreateGroupResponse](ctx, c, "useCreateOpenGroupThreadOffMsysMutation", req, true)
 }
 
 func (c *Client) EditGroupTitle(ctx context.Context, threadID, newTitle string) error {
+	if c.IsThreads() {
+		return c.threadsEditGroupTitle(ctx, threadID, newTitle)
+	}
 	_, err := makeGraphQLRequest[noResp](ctx, c, "IGDEditThreadNameDialogOffMsysMutation", &graphql.IGEditGroupTitleGraphQLRequestPayload{
 		ThreadID: threadID,
 		NewTitle: newTitle,
@@ -145,6 +228,9 @@ func (c *Client) EditGroupTitle(ctx context.Context, threadID, newTitle string) 
 }
 
 func (c *Client) SetUserBlocked(ctx context.Context, userID string, blocked bool) error {
+	if c.IsThreads() {
+		return ErrNotSupportedOnThreads
+	}
 	name := "IGDBlockUserDialogOffMsysUnblockMutation"
 	variables := map[string]any{"target_user_id": userID}
 	if blocked {

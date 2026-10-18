@@ -318,6 +318,8 @@ func (mc *MessageContentWrapper) UnmarshalJSON(data []byte) (err error) {
 		mc.Content = &MessageContentAIRichResponse{}
 	case "SlideMessageGenAISearchPluginResponseXMAContent":
 		mc.Content = &MessageContentAISearchResponse{}
+	case "SlideMessageThreadsPostShare":
+		mc.Content = &MessageContentThreadsPostShare{}
 	default:
 		var unknown map[string]any
 		err = json.Unmarshal(data, &unknown)
